@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Smart Room Monitor</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script src="/socket.io/socket.io.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: #0f1117;
+  color: #e4e4e7;
+  font-family: system-ui, -apple-system, sans-serif;
+  padding: 20px;
+  min-height: 100vh;
+}
+
+/* ── Header ─────────────────────────────── */
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.header h1 { font-size: 17px; font-weight: 600; color: #f4f4f5; margin-bottom: 4px; }
+.live { display: flex; align-items: center; gap: 7px; font-size: 12px; color: #71717a; }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: #4ade80; animation: pulse 2s ease-in-out infinite; }
+.dot.offline { background: #71717a; animation: none; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+.mode-btn {
+  padding: 7px 18px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: opacity .15s;
+}
+.mode-btn:hover { opacity: .85; }
+.mode-btn.auto   { background: #1e3a5f; color: #60a5fa; }
+.mode-btn.manual { background: #2e1a5c; color: #c084fc; }
+
+/* ── Sensor cards ───────────────────────── */
+.sensor-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.sensor-card {
+  background: #16181f;
+  border: 1px solid #27272a;
+  border-radius: 12px;
+  padding: 16px 18px;
+}
+.sensor-card .lbl {
+  font-size: 10px;
+  color: #52525b;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  margin-bottom: 8px;
+}
+.sensor-card .val { font-size: 28px; font-weight: 600; line-height: 1; }
+.sensor-card .unit { font-size: 12px; color: #52525b; margin-left: 2px; }
+#sc-temp .val { color: #f97316; }
+#sc-hum  .val { color: #38bdf8; }
+#sc-aq   .val { color: #a78bfa; }
+.occ-badge {
+  display: inline-block;
+  padding: 4px 13px;
+  border-radius: 99px;
+  font-size: 12px;
+  font-weight: 500;
+  margin-top: 6px;
+}
+.occ-badge.occupied { background: #14532d; color: #4ade80; }
+.occ-badge.empty    { background: #1c1f26; color: #71717a; border: 1px solid #3f3f46; }
+
+/* ── Control panel ──────────────────────── */
+.ctrl-panel {
+  background: #16181f;
+  border: 1px solid #27272a;
+  border-radius: 12px;
+  padding: 16px 18px;
+  margin-bottom: 16px;
+}
+.ctrl-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.ctrl-header span {
+  font-size: 10px;
+  color: #52525b;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+}
+.mode-pill {
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 99px;
+}
+.mode-pill.auto   { background: #1e3a5f; color: #60a5fa; }
+.mode-pill.manual { background: #2e1a5c; color: #c084fc; }
+
+.device-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+.device-card {
+  border: 1px solid #27272a;
+  border-radius: 10px;
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  transition: border-color .2s;
+}
+.device-card.is-on { border-color: #16a34a88; }
+.device-name  { font-size: 13px; font-weight: 500; color: #e4e4e7; }
+.device-state { font-size: 11px; color: #52525b; margin-top: 3px; }
+.device-state.on { color: #4ade80; }
+
+/* toggle switch */
+.toggle-wrap { position: relative; width: 42px; height: 23px; flex-shrink: 0; }
+.toggle-wrap input { opacity: 0; width: 0; height: 0; }
+.toggle-track {
+  position: absolute; inset: 0;
+  background: #27272a;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background .2s;
+}
+.toggle-track::before {
+  content: '';
+  position: absolute;
+  width: 17px; height: 17px;
+  left: 3px; top: 3px;
+  background: #52525b;
+  border-radius: 50%;
+  transition: transform .2s, background .2s;
+}
+.toggle-wrap input:checked ~ .toggle-track { background: #16a34a; }
+.toggle-wrap input:checked ~ .toggle-track::before { transform: translateX(19px); background: #fff; }
+.toggle-wrap.disabled .toggle-track { opacity: .35; cursor: not-allowed; }
+
+/* ── Charts ─────────────────────────────── */
+.chart-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+@media (max-width: 560px) { .chart-row { grid-template-columns: 1fr; } }
+.chart-card {
+  background: #16181f;
+  border: 1px solid #27272a;
+  border-radius: 12px;
+  padding: 16px 18px;
+}
+.chart-card h2 {
+  font-size: 10px;
+  color: #52525b;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  margin-bottom: 12px;
+}
+canvas { max-height: 180px; }
+
+/* ── Alert banner ───────────────────────── */
+.alert-banner {
+  display: none;
+  background: #7c2d12;
+  border: 1px solid #c2410c;
+  border-radius: 10px;
+  padding: 10px 16px;
+  font-size: 13px;
+  color: #fed7aa;
+  margin-bottom: 14px;
+}
+.alert-banner.show { display: block; }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <div>
+    <h1>Smart Room Monitor</h1>
+    <div class="live">
+      <div class="dot offline" id="live-dot"></div>
+      <span id="live-label">Waiting for ESP32…</span>
+    </div>
+  </div>
+  <button class="mode-btn auto" id="mode-btn" onclick="toggleMode()">Auto mode</button>
+</div>
+
+<!-- Alert banner -->
+<div class="alert-banner" id="alert-banner"></div>
+
+<!-- Sensor cards -->
+<div class="sensor-cards">
+  <div class="sensor-card" id="sc-temp">
+    <div class="lbl">Temperature</div>
+    <div class="val" id="v-temp">--<span class="unit">°C</span></div>
+  </div>
+  <div class="sensor-card" id="sc-hum">
+    <div class="lbl">Humidity</div>
+    <div class="val" id="v-hum">--<span class="unit">%</span></div>
+  </div>
+  <div class="sensor-card" id="sc-aq">
+    <div class="lbl">Air quality</div>
+    <div class="val" id="v-aq">--<span class="unit">AQ</span></div>
+  </div>
+  <div class="sensor-card">
+    <div class="lbl">Occupancy</div>
+    <span class="occ-badge empty" id="occ-badge">Empty</span>
+  </div>
+</div>
+
+<!-- Control panel -->
+<div class="ctrl-panel">
+  <div class="ctrl-header">
+    <span>Device controls</span>
+    <span class="mode-pill auto" id="mode-pill">Auto — sensors decide</span>
+  </div>
+  <div class="device-grid">
+
+    <!-- Fan -->
+    <div class="device-card" id="dc-fan">
+      <div>
+        <div class="device-name">Fan</div>
+        <div class="device-state" id="ds-fan">OFF</div>
+      </div>
+      <label class="toggle-wrap disabled" id="tw-fan">
+        <input type="checkbox" id="cb-fan" disabled
+               onchange="sendDevice('fan', this.checked)">
+        <div class="toggle-track"></div>
+      </label>
+    </div>
+
+    <!-- Light -->
+    <div class="device-card" id="dc-light">
+      <div>
+        <div class="device-name">Light</div>
+        <div class="device-state" id="ds-light">OFF</div>
+      </div>
+      <label class="toggle-wrap disabled" id="tw-light">
+        <input type="checkbox" id="cb-light" disabled
+               onchange="sendDevice('light', this.checked)">
+        <div class="toggle-track"></div>
+      </label>
+    </div>
+
+    <!-- Buzzer -->
+    <div class="device-card" id="dc-buzzer">
+      <div>
+        <div class="device-name">Buzzer</div>
+        <div class="device-state" id="ds-buzzer">OFF</div>
+      </div>
+      <label class="toggle-wrap disabled" id="tw-buzzer">
+        <input type="checkbox" id="cb-buzzer" disabled
+               onchange="sendDevice('buzzer', this.checked)">
+        <div class="toggle-track"></div>
+      </label>
+    </div>
+
+  </div>
+</div>
+
+<!-- Charts -->
+<div class="chart-row">
+  <div class="chart-card">
+    <h2>Temperature &amp; humidity</h2>
+    <canvas id="envChart"></canvas>
+  </div>
+  <div class="chart-card">
+    <h2>Air quality</h2>
+    <canvas id="aqChart"></canvas>
+  </div>
+</div>
+
+<script>
+const socket = io();
+let currentMode = 'auto';
+const MAX_PTS   = 30;
+
+// ── Charts ─────────────────────────────────────────────────────────
+const BASE_OPTS = {
+  responsive: true, animation: false,
+  plugins: { legend: { labels: { color: '#52525b', boxWidth: 10, font: { size: 11 } } } },
+  scales: {
+    x: { ticks: { color: '#3f3f46', maxTicksLimit: 6, font: { size: 10 } }, grid: { color: '#1c1f26' } },
+    y: { ticks: { color: '#3f3f46', font: { size: 10 } }, grid: { color: '#1c1f26' } },
+  },
+};
+
+const envChart = new Chart(document.getElementById('envChart'), {
+  type: 'line',
+  data: {
+    labels: [],
+    datasets: [
+      { label: 'Temp (°C)',    data: [], borderColor: '#f97316', backgroundColor: 'transparent', tension: 0.35, pointRadius: 2 },
+      { label: 'Humidity (%)', data: [], borderColor: '#38bdf8', backgroundColor: 'transparent', tension: 0.35, pointRadius: 2 },
+    ],
+  },
+  options: BASE_OPTS,
+});
+
+const aqChart = new Chart(document.getElementById('aqChart'), {
+  type: 'line',
+  data: {
+    labels: [],
+    datasets: [
+      { label: 'Air quality', data: [], borderColor: '#a78bfa',
+        backgroundColor: 'rgba(167,139,250,0.07)', tension: 0.35, pointRadius: 2, fill: true },
+    ],
+  },
+  options: BASE_OPTS,
+});
+
+function pushChart(chart, label, ...vals) {
+  chart.data.labels.push(label);
+  if (chart.data.labels.length > MAX_PTS) chart.data.labels.shift();
+  vals.forEach((v, i) => {
+    chart.data.datasets[i].data.push(v);
+    if (chart.data.datasets[i].data.length > MAX_PTS) chart.data.datasets[i].data.shift();
+  });
+  chart.update();
+}
+
+// ── Sensor reading ──────────────────────────────────────────────────
+function applyReading(d) {
+  // Cards
+  document.getElementById('v-temp').innerHTML = `${d.temp.toFixed(1)}<span class="unit">°C</span>`;
+  document.getElementById('v-hum').innerHTML  = `${d.humidity.toFixed(1)}<span class="unit">%</span>`;
+  document.getElementById('v-aq').innerHTML   = `${d.aq}<span class="unit">AQ</span>`;
+
+  const badge = document.getElementById('occ-badge');
+  badge.textContent = d.occupied ? 'Occupied' : 'Empty';
+  badge.className   = 'occ-badge ' + (d.occupied ? 'occupied' : 'empty');
+
+  // Live indicator
+  const dot = document.getElementById('live-dot');
+  dot.classList.remove('offline');
+  document.getElementById('live-label').textContent =
+    'Live · ' + new Date(d.time).toLocaleTimeString();
+
+  // Alert banner
+  const banner = document.getElementById('alert-banner');
+  const alerts = [];
+  if (d.temp     > 30)  alerts.push(`High temp ${d.temp.toFixed(1)}°C`);
+  if (d.humidity > 80)  alerts.push(`High humidity ${d.humidity.toFixed(1)}%`);
+  if (d.aq       > 600) alerts.push(`Poor air quality (${d.aq})`);
+  if (alerts.length) {
+    banner.textContent = '⚠ ' + alerts.join(' · ');
+    banner.classList.add('show');
+  } else {
+    banner.classList.remove('show');
+  }
+
+  // Charts
+  const t = new Date(d.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  pushChart(envChart, t, d.temp, d.humidity);
+  pushChart(aqChart,  t, d.aq);
+}
+
+// ── Command state ───────────────────────────────────────────────────
+function applyCommandState(state) {
+  currentMode = state.mode;
+  const isManual = (currentMode === 'manual');
+
+  // Header button
+  const btn = document.getElementById('mode-btn');
+  btn.textContent = isManual ? 'Manual mode' : 'Auto mode';
+  btn.className   = 'mode-btn ' + currentMode;
+
+  // Pill
+  const pill = document.getElementById('mode-pill');
+  pill.textContent = isManual ? 'Manual — you control devices' : 'Auto — sensors decide';
+  pill.className   = 'mode-pill ' + currentMode;
+
+  // Each device
+  ['fan', 'light', 'buzzer'].forEach(dev => {
+    const on  = !!state.commands[dev];
+    const cb  = document.getElementById('cb-' + dev);
+    const tw  = document.getElementById('tw-' + dev);
+    const dc  = document.getElementById('dc-' + dev);
+    const ds  = document.getElementById('ds-' + dev);
+
+    // Don't fire onchange when we programmatically set checked
+    cb.onchange = null;
+    cb.checked  = on;
+    cb.disabled = !isManual;
+    cb.onchange = () => sendDevice(dev, cb.checked);
+
+    tw.className  = 'toggle-wrap' + (isManual ? '' : ' disabled');
+    dc.className  = 'device-card' + (on ? ' is-on' : '');
+    ds.textContent = on ? 'ON' : 'OFF';
+    ds.className  = 'device-state' + (on ? ' on' : '');
+  });
+}
+
+// ── Commands from browser ───────────────────────────────────────────
+function toggleMode() {
+  const next = currentMode === 'auto' ? 'manual' : 'auto';
+  socket.emit('setCommand', { mode: next });
+}
+
+function sendDevice(device, value) {
+  if (currentMode !== 'manual') return;
+  socket.emit('setCommand', { device, value });
+}
+
+// ── Socket events ───────────────────────────────────────────────────
+socket.on('reading',      applyReading);
+socket.on('commandState', applyCommandState);
+
+socket.on('disconnect', () => {
+  document.getElementById('live-dot').classList.add('offline');
+  document.getElementById('live-label').textContent = 'Disconnected…';
+});
+
+// ── Load initial data ───────────────────────────────────────────────
+fetch('/api/history')
+  .then(r => r.json())
+  .then(data => data.forEach(applyReading))
+  .catch(() => {});
+
+fetch('/api/commands')
+  .then(r => r.json())
+  .then(applyCommandState)
+  .catch(() => {});
+</script>
+</body>
+</html>
