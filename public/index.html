@@ -272,6 +272,19 @@ canvas { max-height: 180px; }
       </label>
     </div>
 
+    <!-- O2 Pump -->
+    <div class="device-card" id="dc-pump">
+      <div>
+        <div class="device-name">O2 Pump</div>
+        <div class="device-state" id="ds-pump">OFF</div>
+      </div>
+      <label class="toggle-wrap disabled" id="tw-pump">
+        <input type="checkbox" id="cb-pump" disabled
+               onchange="sendDevice('pump', this.checked)">
+        <div class="toggle-track"></div>
+      </label>
+    </div>
+
   </div>
 </div>
 
@@ -388,7 +401,7 @@ function applyCommandState(state) {
   pill.className   = 'mode-pill ' + currentMode;
 
   // Each device
-  ['fan', 'light', 'buzzer'].forEach(dev => {
+  ['fan', 'light', 'buzzer', 'pump'].forEach(dev => {
     const on  = !!state.commands[dev];
     const cb  = document.getElementById('cb-' + dev);
     const tw  = document.getElementById('tw-' + dev);

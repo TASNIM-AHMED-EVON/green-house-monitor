@@ -22,9 +22,20 @@
  *   OLED VCC      → 3.3V
  *   Relay IN1     → GPIO 26   (Fan — HIGH = ON)
  *   Relay IN2     → GPIO 27   (Light — HIGH = ON)
+ *   Relay IN3     → GPIO 33   (O2 Pump — HIGH = ON)
  *   Relay VCC     → 5V        (coil needs 5V)
  *   Buzzer (+)    → GPIO 25   (active piezo — HIGH = beep)
  *   Buzzer (-)    → GND
+ *
+ * ── O2 Pump sub-circuit (relay channel 3, low-voltage only) ────────
+ *   This is a 5V DC pump, NOT a mains device. It is switched on the
+ *   5V rail through relay channel 3 — do NOT wire it to AC mains.
+ *     5V adapter (+) → Relay3 COM
+ *     Relay3 NO      → Pump (+)
+ *     Pump (-)       → 5V adapter GND (common GND with ESP32)
+ *   No O2 sensor is used. The MQ-135 reading is used as a CO2/stale-air
+ *   proxy: when air quality crosses CO2_THRESHOLD, we assume O2 is
+ *   correspondingly depleted and turn the pump on to aerate/replenish.
  */
 
 #include <WiFi.h>
@@ -52,7 +63,13 @@ const char* SERVER_URL = "http://YOUR_SERVER_IP:3000/api/data";
 #define OLED_SCL     22
 #define FAN_RELAY    26
 #define LIGHT_RELAY  27
+#define PUMP_RELAY   33
 #define BUZZER_PIN   25
+
+// CO2 proxy threshold (MQ-135 12-bit ADC) — no O2 sensor available,
+// so we trigger the O2 pump when air quality crosses this value.
+// Tune alongside AQ_ALERT_THRESHOLD after burn-in/calibration.
+const int CO2_PUMP_THRESHOLD = 700;
 
 // ── OLED ───────────────────────────────────────────────────────────
 #define SCREEN_W  128
@@ -83,6 +100,7 @@ String ctrlMode = "auto";   // "auto" | "manual"
 bool   fanOn    = false;
 bool   lightOn  = false;
 bool   buzzerOn = false;
+bool   pumpOn   = false;
 
 // ── setup ──────────────────────────────────────────────────────────
 void setup() {
@@ -92,9 +110,11 @@ void setup() {
   // Output pins
   pinMode(FAN_RELAY,   OUTPUT);
   pinMode(LIGHT_RELAY, OUTPUT);
+  pinMode(PUMP_RELAY,  OUTPUT);
   pinMode(BUZZER_PIN,  OUTPUT);
   digitalWrite(FAN_RELAY,   LOW);
   digitalWrite(LIGHT_RELAY, LOW);
+  digitalWrite(PUMP_RELAY,  LOW);
   digitalWrite(BUZZER_PIN,  LOW);
 
   // Input pin
@@ -175,12 +195,14 @@ void loop() {
     fanOn    = occupied && (lastTemp > 30.0f);
     lightOn  = occupied;
     buzzerOn = (lastAQ > 600);
+    pumpOn   = (lastAQ > CO2_PUMP_THRESHOLD);  // no O2 sensor: CO2 proxy trigger
   }
-  // Manual: fanOn / lightOn / buzzerOn already set from server response
+  // Manual: fanOn / lightOn / buzzerOn / pumpOn already set from server response
 
   // 5. Apply to hardware
   digitalWrite(FAN_RELAY,   fanOn    ? HIGH : LOW);
   digitalWrite(LIGHT_RELAY, lightOn  ? HIGH : LOW);
+  digitalWrite(PUMP_RELAY,  pumpOn   ? HIGH : LOW);
   digitalWrite(BUZZER_PIN,  buzzerOn ? HIGH : LOW);
 
   // 6. Update OLED
@@ -209,11 +231,12 @@ void sendToServer() {
   http.setTimeout(6000);
 
   // Build JSON body
-  StaticJsonDocument<256> body;
+  StaticJsonDocument<320> body;
   body["temp"]     = lastTemp;
   body["humidity"] = lastHum;
   body["aq"]       = lastAQ;
   body["occupied"] = occupied ? 1 : 0;
+  body["pump"]     = pumpOn ? 1 : 0;
 
   String payload;
   serializeJson(body, payload);
@@ -224,7 +247,7 @@ void sendToServer() {
 
   if (code == HTTP_CODE_OK) {
     String respStr = http.getString();
-    StaticJsonDocument<256> resp;
+    StaticJsonDocument<320> resp;
     DeserializationError err = deserializeJson(resp, respStr);
 
     if (!err) {
@@ -237,8 +260,9 @@ void sendToServer() {
         fanOn    = resp["commands"]["fan"]    | false;
         lightOn  = resp["commands"]["light"]  | false;
         buzzerOn = resp["commands"]["buzzer"] | false;
-        Serial.printf("[Manual] Fan:%d Light:%d Buzzer:%d\n",
-          (int)fanOn, (int)lightOn, (int)buzzerOn);
+        pumpOn   = resp["commands"]["pump"]   | false;
+        Serial.printf("[Manual] Fan:%d Light:%d Buzzer:%d Pump:%d\n",
+          (int)fanOn, (int)lightOn, (int)buzzerOn, (int)pumpOn);
       }
     } else {
       Serial.println("[JSON] parse error: " + String(err.c_str()));
@@ -275,9 +299,10 @@ void updateOLED() {
   oled.print("Fan:"); oled.print(fanOn ? "ON  " : "OFF ");
   oled.print("Lgt:"); oled.print(lightOn ? "ON" : "OFF");
 
-  // Line 4: Buzzer
+  // Line 4: Buzzer and Pump
   oled.setCursor(0, 44);
-  oled.print("Buzz:"); oled.print(buzzerOn ? "ON" : "OFF");
+  oled.print("Buzz:"); oled.print(buzzerOn ? "ON " : "OFF ");
+  oled.print("O2:"); oled.print(pumpOn ? "ON" : "OFF");
 
   // Line 5: IP
   oled.setCursor(0, 54);

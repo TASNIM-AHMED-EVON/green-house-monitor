@@ -16,6 +16,7 @@ const THRESHOLDS = {
   tempHigh:     30,    // °C — auto mode turns fan ON above this
   humidityHigh: 80,    // %
   aqAlert:      600,   // ADC 12-bit value (0–4095)
+  co2PumpAlert: 700,   // ADC value — mirrors CO2_PUMP_THRESHOLD in firmware (no O2 sensor: CO2 proxy)
 };
 
 const MAX_HISTORY    = 50;
@@ -34,6 +35,7 @@ let cmdState = {
     fan:    false,
     light:  false,
     buzzer: false,
+    pump:   false,
   },
 };
 
@@ -48,7 +50,7 @@ const CHAT_ID = process.env.TELEGRAM_CHAT_ID || '';
 // ESP32 POSTs sensor data here every ~5 seconds.
 // Response carries the current cmdState so ESP32 knows what to do.
 app.post('/api/data', (req, res) => {
-  const { temp, humidity, aq, occupied } = req.body;
+  const { temp, humidity, aq, occupied, pump } = req.body;
 
   if (temp == null || humidity == null || aq == null) {
     return res.status(400).json({ error: 'Missing fields: temp, humidity, aq required' });
@@ -59,6 +61,7 @@ app.post('/api/data', (req, res) => {
     humidity: parseFloat(humidity),
     aq:       parseInt(aq),
     occupied: !!occupied,
+    pump:     !!pump,
     time:     new Date().toISOString(),
   };
 
@@ -128,6 +131,7 @@ function checkAndAlert(d) {
   if (d.temp     > THRESHOLDS.tempHigh)     msgs.push(`🌡 High temp: ${d.temp.toFixed(1)}°C`);
   if (d.humidity > THRESHOLDS.humidityHigh) msgs.push(`💧 High humidity: ${d.humidity.toFixed(1)}%`);
   if (d.aq       > THRESHOLDS.aqAlert)      msgs.push(`😷 Poor air quality (AQ: ${d.aq})`);
+  if (d.pump)                               msgs.push(`🫧 O2 pump auto-activated (CO2 proxy AQ: ${d.aq})`);
 
   if (!msgs.length) return;
 
