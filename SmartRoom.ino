@@ -47,12 +47,12 @@
 #include <Adafruit_SSD1306.h>
 
 // ── WiFi & Server ──────────────────────────────────────────────────
-const char* WIFI_SSID  = "YOUR_WIFI_SSID";
-const char* WIFI_PASS  = "YOUR_WIFI_PASSWORD";
+const char* WIFI_SSID  = "LSH_New_101";
+const char* WIFI_PASS  = "99747305";
 
 // Local testing (same network):  "http://192.168.x.x:3000/api/data"
 // Render deployment:             "https://your-app-name.onrender.com/api/data"
-const char* SERVER_URL = "http://YOUR_SERVER_IP:3000/api/data";
+const char* SERVER_URL = "https://green-house-monitor.onrender.com//api/data";
 
 // ── Pin definitions ────────────────────────────────────────────────
 #define DHT_PIN      4
