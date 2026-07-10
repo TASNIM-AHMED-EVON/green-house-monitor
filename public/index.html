@@ -223,6 +223,10 @@ canvas { max-height: 180px; }
     <div class="lbl">Occupancy</div>
     <span class="occ-badge empty" id="occ-badge">Empty</span>
   </div>
+  <div class="sensor-card">
+    <div class="lbl">Door</div>
+    <span class="occ-badge empty" id="door-badge">Closed</span>
+  </div>
 </div>
 
 <!-- Control panel -->
@@ -285,6 +289,13 @@ canvas { max-height: 180px; }
       </label>
     </div>
 
+  </div>
+
+  <!-- Door manual override (works regardless of auto/manual mode) -->
+  <div style="margin-top:14px; display:flex; gap:10px; align-items:center;">
+    <span style="font-size:10px; color:#52525b; text-transform:uppercase; letter-spacing:.07em;">Door override</span>
+    <button class="mode-btn manual" style="background:#1e3a5f; color:#60a5fa;" onclick="triggerDoor('doorClose')">Close now</button>
+    <button class="mode-btn manual" style="background:#2e1a5c; color:#c084fc;" onclick="triggerDoor('doorOpen')">Open</button>
   </div>
 </div>
 
@@ -360,6 +371,10 @@ function applyReading(d) {
   badge.textContent = d.occupied ? 'Occupied' : 'Empty';
   badge.className   = 'occ-badge ' + (d.occupied ? 'occupied' : 'empty');
 
+  const doorBadge = document.getElementById('door-badge');
+  doorBadge.textContent = d.doorOpen ? 'Open' : 'Closed';
+  doorBadge.className   = 'occ-badge ' + (d.doorOpen ? 'occupied' : 'empty');
+
   // Live indicator
   const dot = document.getElementById('live-dot');
   dot.classList.remove('offline');
@@ -430,6 +445,12 @@ function toggleMode() {
 function sendDevice(device, value) {
   if (currentMode !== 'manual') return;
   socket.emit('setCommand', { device, value });
+}
+
+// Door override works regardless of auto/manual mode — it's a one-shot
+// servo action, not a persistent toggle like fan/light/buzzer/pump.
+function triggerDoor(action) {
+  socket.emit('setCommand', { device: action, value: true });
 }
 
 // ── Socket events ───────────────────────────────────────────────────

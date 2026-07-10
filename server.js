@@ -32,10 +32,12 @@ let lastAlert = 0;
 let cmdState = {
   mode: 'auto',      // 'auto' | 'manual'
   commands: {
-    fan:    false,
-    light:  false,
-    buzzer: false,
-    pump:   false,
+    fan:       false,
+    light:     false,
+    buzzer:    false,
+    pump:      false,
+    doorClose: false,  // momentary trigger — auto-resets after being sent once
+    doorOpen:  false,  // momentary trigger — auto-resets after being sent once
   },
 };
 
@@ -50,7 +52,7 @@ const CHAT_ID = process.env.TELEGRAM_CHAT_ID || '';
 // ESP32 POSTs sensor data here every ~5 seconds.
 // Response carries the current cmdState so ESP32 knows what to do.
 app.post('/api/data', (req, res) => {
-  const { temp, humidity, aq, occupied, pump } = req.body;
+  const { temp, humidity, aq, occupied, pump, doorOpen } = req.body;
 
   if (temp == null || humidity == null || aq == null) {
     return res.status(400).json({ error: 'Missing fields: temp, humidity, aq required' });
@@ -62,6 +64,7 @@ app.post('/api/data', (req, res) => {
     aq:       parseInt(aq),
     occupied: !!occupied,
     pump:     !!pump,
+    doorOpen: !!doorOpen,
     time:     new Date().toISOString(),
   };
 
@@ -80,6 +83,16 @@ app.post('/api/data', (req, res) => {
     mode:     cmdState.mode,
     commands: cmdState.commands,
   });
+
+  // doorClose / doorOpen are one-shot triggers (servo actions), not
+  // persistent toggles like fan/light/pump — reset them right after
+  // this response goes out so the ESP32 doesn't re-trigger the servo
+  // on every subsequent POST.
+  if (cmdState.commands.doorClose || cmdState.commands.doorOpen) {
+    cmdState.commands.doorClose = false;
+    cmdState.commands.doorOpen  = false;
+    io.emit('commandState', cmdState); // keep dashboards in sync (button un-presses)
+  }
 });
 
 // Dashboard fetches existing readings when page opens
@@ -132,6 +145,7 @@ function checkAndAlert(d) {
   if (d.humidity > THRESHOLDS.humidityHigh) msgs.push(`💧 High humidity: ${d.humidity.toFixed(1)}%`);
   if (d.aq       > THRESHOLDS.aqAlert)      msgs.push(`😷 Poor air quality (AQ: ${d.aq})`);
   if (d.pump)                               msgs.push(`🫧 O2 pump auto-activated (CO2 proxy AQ: ${d.aq})`);
+  if (d.doorOpen)                           msgs.push(`🚪 Door is open`);
 
   if (!msgs.length) return;
 
