@@ -52,7 +52,7 @@ const CHAT_ID = process.env.TELEGRAM_CHAT_ID || '';
 // ESP32 POSTs sensor data here every ~5 seconds.
 // Response carries the current cmdState so ESP32 knows what to do.
 app.post('/api/data', (req, res) => {
-  const { temp, humidity, aq, occupied, pump, doorOpen } = req.body;
+  const { temp, humidity, aq, occupied, pump, doorOpen, doorAlarm, doorOpenSec } = req.body;
 
   if (temp == null || humidity == null || aq == null) {
     return res.status(400).json({ error: 'Missing fields: temp, humidity, aq required' });
@@ -65,6 +65,8 @@ app.post('/api/data', (req, res) => {
     occupied: !!occupied,
     pump:     !!pump,
     doorOpen: !!doorOpen,
+    doorAlarm:   !!doorAlarm,
+    doorOpenSec: parseInt(doorOpenSec) || 0,
     time:     new Date().toISOString(),
   };
 
@@ -145,7 +147,8 @@ function checkAndAlert(d) {
   if (d.humidity > THRESHOLDS.humidityHigh) msgs.push(`💧 High humidity: ${d.humidity.toFixed(1)}%`);
   if (d.aq       > THRESHOLDS.aqAlert)      msgs.push(`😷 Poor air quality (AQ: ${d.aq})`);
   if (d.pump)                               msgs.push(`🫧 O2 pump auto-activated (CO2 proxy AQ: ${d.aq})`);
-  if (d.doorOpen)                           msgs.push(`🚪 Door is open`);
+  if (d.doorAlarm)                          msgs.push(`🚨 Door left open ${d.doorOpenSec}s — buzzer alarm active`);
+  else if (d.doorOpen)                      msgs.push(`🚪 Door is open`);
 
   if (!msgs.length) return;
 
