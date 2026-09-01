@@ -32,7 +32,7 @@ The system runs entirely on an ESP32, reading temperature, humidity, air quality
 - [Getting Started](#getting-started)
 - [Usage](#usage)
 - [Notes](#notes)
-- [Website Link](#Website Link)
+- [Website Link](#website-link)
 
 
 ---
