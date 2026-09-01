@@ -7,7 +7,7 @@
 [![ESP32](https://img.shields.io/badge/ESP32-Dev%20Module-blue?style=flat-square&logo=espressif&logoColor=white)](https://www.espressif.com/)
 [![Node.js](https://img.shields.io/badge/Node.js-Express-339933?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org/)
 [![Socket.IO](https://img.shields.io/badge/Realtime-Socket.IO-black?style=flat-square&logo=socket.io&logoColor=white)](https://socket.io/)
-[![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](#license)
+
 
 > An ESP32-based IoT system for environmental sensing, automated control, and remote door access —
 > with a live web dashboard.
@@ -178,6 +178,4 @@ Once the server is running, open its URL in a browser. The dashboard connects ov
 
 ---
 
-## License
 
-This project is licensed under the [MIT License](LICENSE).
