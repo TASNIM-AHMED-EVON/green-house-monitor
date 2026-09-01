@@ -32,7 +32,8 @@ The system runs entirely on an ESP32, reading temperature, humidity, air quality
 - [Getting Started](#getting-started)
 - [Usage](#usage)
 - [Notes](#notes)
-- [License](#license)
+- [Website Link](#Website Link)
+
 
 ---
 
@@ -178,4 +179,5 @@ Once the server is running, open its URL in a browser. The dashboard connects ov
 
 ---
 
+## Website Link
 
